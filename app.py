@@ -15,13 +15,15 @@ scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/aut
 creds_json = os.environ.get("GOOGLE_CREDS_JSON")
 sheet_id = os.environ.get("SHEET_ID")
 
+sheet = None
 if creds_json and sheet_id:
-    creds_dict = eval(creds_json)  # Ensure JSON string is properly formatted
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-    client = gspread.authorize(creds)
-    sheet = client.open_by_key(sheet_id).sheet1
-else:
-    sheet = None
+    try:
+        creds_dict = eval(creds_json)  # JSON string from environment variable
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        sheet = client.open_by_key(sheet_id).sheet1
+    except Exception as e:
+        print("Google Sheets authorization failed:", e)
 
 # -------------------------
 # Email setup
@@ -53,7 +55,6 @@ def send_email(first_name, to_email):
 <body style="margin:0; padding:0; font-family: Arial, sans-serif; background-color:#f4f6f8; color:#333;">
 <table align="center" cellpadding="0" cellspacing="0" width="100%" style="max-width:600px; background:#ffffff; margin:20px auto; border-radius:10px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
 
-<!-- Header -->
 <tr>
 <td align="center" style="padding:20px; background-color:#0a2a43; color:#ffffff;">
 <img src="{LOGO_URL}" alt="FxTracker Pro Tech Logo" width="100" style="margin-bottom:10px;">
@@ -62,7 +63,6 @@ def send_email(first_name, to_email):
 </td>
 </tr>
 
-<!-- Greeting -->
 <tr>
 <td style="padding:20px;">
 <p style="font-size:16px;">Hi <strong>{first_name}</strong>,</p>
@@ -73,7 +73,6 @@ Your purchase of the <strong>FxTracker Pro Journal™ V1.0</strong> has been suc
 </td>
 </tr>
 
-<!-- Downloads -->
 <tr>
 <td style="padding:20px; text-align:center;">
 <h2 style="font-size:18px; margin-bottom:15px;">📂 Your Downloads</h2>
@@ -89,7 +88,6 @@ Your purchase of the <strong>FxTracker Pro Journal™ V1.0</strong> has been suc
 </td>
 </tr>
 
-<!-- Why it matters -->
 <tr>
 <td style="padding:20px;">
 <h3 style="font-size:16px;">💡 Why These Files Matter</h3>
@@ -100,7 +98,6 @@ Your purchase of the <strong>FxTracker Pro Journal™ V1.0</strong> has been suc
 </td>
 </tr>
 
-<!-- Motivation -->
 <tr>
 <td style="padding:20px; background:#f9fafb;">
 <p style="font-size:15px; line-height:1.6;">
@@ -112,7 +109,6 @@ You’ve now joined a growing community of traders who choose innovation over gu
 </td>
 </tr>
 
-<!-- Support -->
 <tr>
 <td style="padding:20px;">
 <h3 style="font-size:16px;">🛠️ Support & Updates</h3>
@@ -123,7 +119,6 @@ If you need help setting up or have any questions, just reply to this email—we
 </td>
 </tr>
 
-<!-- Closing -->
 <tr>
 <td style="padding:20px; text-align:left;">
 <p style="font-size:15px;">
@@ -134,7 +129,6 @@ Warm regards,<br>
 </td>
 </tr>
 
-<!-- Footer -->
 <tr>
 <td style="padding:15px; text-align:center; background:#0a2a43; color:#ffffff; font-size:12px;">
 © 2025 FxTracker Pro Tech. All rights reserved.<br>
@@ -168,9 +162,11 @@ def tally_webhook():
     first_name = data.get("firstName")
     buyer_email = data.get("email")
 
-    # Save to Google Sheet
     if sheet:
-        sheet.append_row([submission_id, first_name, buyer_email, "pending"])
+        try:
+            sheet.append_row([submission_id, first_name, buyer_email, "pending"])
+        except Exception as e:
+            print("Error updating sheet:", e)
 
     return jsonify({"status": "pending", "submissionId": submission_id})
 
@@ -183,23 +179,29 @@ def cryptocloud_webhook():
     status = data.get("status")
     buyer_email = data.get("email")
 
-    # Update Google Sheet and send email
     if sheet:
-        cell = sheet.find(buyer_email)
-        if cell:
-            sheet.update_cell(cell.row, 4, status)  # Assuming 4th column is status
-            if status.lower() == "paid":
-                first_name = sheet.cell(cell.row, 2).value
-                send_email(first_name, buyer_email)
+        try:
+            cell = sheet.find(buyer_email)
+            if cell:
+                sheet.update_cell(cell.row, 4, status)
+                if status.lower() == "paid":
+                    first_name = sheet.cell(cell.row, 2).value
+                    send_email(first_name, buyer_email)
+        except Exception as e:
+            print("Error updating sheet on CryptoCloud webhook:", e)
 
     return jsonify({"status": status, "buyer": buyer_email})
 
 # -------------------------
-# Home route
+# Root route
 # -------------------------
 @app.route("/")
 def home():
     return "🚀 FxTracker Pro Tech Middleware is running!"
 
+# -------------------------
+# Start Flask using Render's PORT
+# -------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
