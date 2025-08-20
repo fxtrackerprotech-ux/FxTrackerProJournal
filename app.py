@@ -17,13 +17,10 @@ sheet_id = os.environ.get("SHEET_ID")
 
 sheet = None
 if creds_json and sheet_id:
-    try:
-        creds_dict = eval(creds_json)  # JSON string from environment variable
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
-        sheet = client.open_by_key(sheet_id).sheet1
-    except Exception as e:
-        print("Google Sheets authorization failed:", e)
+    creds_dict = eval(creds_json)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    client = gspread.authorize(creds)
+    sheet = client.open_by_key(sheet_id).sheet1
 
 # -------------------------
 # Email setup
@@ -39,6 +36,7 @@ LOGO_URL = os.environ.get("LOGO_URL")
 # -------------------------
 def send_email(first_name, to_email):
     if not EMAIL_ADDRESS or not EMAIL_APP_PASSWORD:
+        print("Email credentials missing")
         return False
 
     msg = MIMEMultipart("alternative")
@@ -147,6 +145,7 @@ This email and its attachments are intended solely for the buyer. Do not share o
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(EMAIL_ADDRESS, EMAIL_APP_PASSWORD)
             server.sendmail(EMAIL_ADDRESS, to_email, msg.as_string())
+        print(f"Email sent to {to_email}")
         return True
     except Exception as e:
         print("Email error:", e)
@@ -163,10 +162,8 @@ def tally_webhook():
     buyer_email = data.get("email")
 
     if sheet:
-        try:
-            sheet.append_row([submission_id, first_name, buyer_email, "pending"])
-        except Exception as e:
-            print("Error updating sheet:", e)
+        sheet.append_row([submission_id, first_name, buyer_email, "pending"])
+        print(f"Tally submission saved: {submission_id}")
 
     return jsonify({"status": "pending", "submissionId": submission_id})
 
@@ -180,27 +177,25 @@ def cryptocloud_webhook():
     buyer_email = data.get("email")
 
     if sheet:
-        try:
-            cell = sheet.find(buyer_email)
-            if cell:
-                sheet.update_cell(cell.row, 4, status)
-                if status.lower() == "paid":
-                    first_name = sheet.cell(cell.row, 2).value
-                    send_email(first_name, buyer_email)
-        except Exception as e:
-            print("Error updating sheet on CryptoCloud webhook:", e)
+        cell = sheet.find(buyer_email)
+        if cell:
+            sheet.update_cell(cell.row, 4, status)
+            if status.lower() == "paid":
+                first_name = sheet.cell(cell.row, 2).value
+                send_email(first_name, buyer_email)
+                print(f"Email triggered for {buyer_email}")
 
     return jsonify({"status": status, "buyer": buyer_email})
 
 # -------------------------
-# Root route
+# Home route
 # -------------------------
 @app.route("/")
 def home():
-    return "🚀 FxTracker Pro Tech Middleware is running!"
+    return "🚀 FxTracker Pro Tech Middleware is running on Replit!"
 
 # -------------------------
-# Start Flask using Render's PORT
+# Run app on Replit port
 # -------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
